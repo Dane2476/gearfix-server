@@ -3,12 +3,12 @@ from flask import Flask, jsonify, request, make_response
 from flask_restful import Resource, Api
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from pathlib import Path
 
-UPLOAD_FOLDER = '/images'
-ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
+UPLOAD_DIR: Path = Path(__file__).parent / 'uploads'
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 api = Api(app)
 CORS(app)
 
@@ -16,36 +16,31 @@ items = [{'brand': 'Fender', 'model': 'Stratocaster'}]
 items.append({'brand': 'Gibson', 'model': 'SG'})
 
 
-def allowed_file(filename):
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def is_valid_upload(upload) -> bool:
+    # some validation logic
+    return Path(upload.filename).suffix.lower() in ['.jpg', '.jpeg']
 
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
 
-    print(request.files)
     if request.method == "POST":
         uploaded_files = request.files.getlist('images')
-        print("Uploaded files:", uploaded_files,
-              "Filename:", uploaded_files[0].filename)
+        print(uploaded_files)
+        if not uploaded_files or not uploaded_files[0].filename:
+            return 'invalid request', 400
 
-        # check if the post request has the file part
-        if 'file' not in request.files:
+        valid_uploads = list(filter(is_valid_upload, uploaded_files))
+        if not valid_uploads:
+            return 'invalid image(s)', 400
 
-            print('No file part')
-            return make_response("No File Part", 400)
-        file = request.files["file"]
-        # if user does not select file, browser also submit an empty part
-        # without filename
-        if file.filename == '':
-            print('No selected file')
-            return make_response("No Selected File", 400)
-        if file and allowed_file(file.filename):
-            # filenames can be dangerous!
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return make_response("Success", 201)
+        for upload in valid_uploads:
+            filename = secure_filename(upload.filename)
+            save_path = str(UPLOAD_DIR / filename)
+
+            upload.save(save_path)
+
+        return 'uploaded'
 
 
 class Buy(Resource):
